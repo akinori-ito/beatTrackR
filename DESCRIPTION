@@ -1,0 +1,16 @@
+Package: beatTrackR
+Version: 0.1
+Encoding: UTF-8
+LazyData: true
+Date: 2019-08-25
+Title: beatTrackR: Beat tracking for R
+Authors@R: person("Akinori", "Ito", role = c("aut", "cre"),
+                     email = "aito@spcom.ecei.tohoku.ac.jp")
+Author: Akinori Ito [aut, cre]
+Maintainer: Akinori Ito <aito@spcom.ecei.tohoku.ac.jp>
+Depends: R (>= 3.5.0)
+Imports: tuneR (>= 1.3), stats
+Description: beatTrackR detects beats from the music signal.
+License: MIT
+URL: https://github.com/akinori-ito/beatTrackR
+RoxygenNote: 6.1.1
