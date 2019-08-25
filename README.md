@@ -76,7 +76,7 @@ The element `beatpos` in the returned list contains a vector of beat positions (
  [1]    1 1156 1407 1661 1947 2456 2613 2877 3122 3767 4315 4579 4912 5947 6526 7280 7947 8315 8614
 ```
 
-The element `loadperiod` contains the estimated fundamental period (in frame) segment by segment.
+The element `localperiod` contains the estimated fundamental period (in frame) segment by segment.
 
 ```R
 > beat$localperiod
