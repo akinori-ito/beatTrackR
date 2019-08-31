@@ -146,8 +146,8 @@ h_analysis <- function(feature, peaks, hwidth=500, firstskip=500) {
       vals[k] <- v
     }
   }
-  mval <- max(vals)
-  thres <- mval/20
+  mval <- summary(vals)
+  thres <- mval[1]
   list(segs=detect.peaks2(vals,thres,10,"max"),vals=vals)
 }
 
@@ -226,6 +226,7 @@ generateBeep <- function(org_aud,beatpos,partpos,beeplength=5,beepamp=5000) {
 #' @param w a Wave object
 #' @param freq.range Frequrncy range on which spectral flux is calculated. (NULL means using the entire range) For example, freq.range=c(0,8000) means "use 0 to 8000Hz for calculation"
 #' @return a list. beatpos is a vector of beat positions, boundary is a vector of part boundaries, flux is the spectral flux, localperiod is a vector of local fundamental period, frames is the total frame length
+#' @export
 beattrack <- function(w,freq.range=NULL,fine.range=5.0,fine.prec=0.01) {
 
   # phase 1: calcualte spectral flux
