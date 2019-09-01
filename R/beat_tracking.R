@@ -97,7 +97,8 @@ spectralFlux <- function(w,frameshift=0.01,freq.range=NULL) {
 #' @export
 estimatePeriod <- function(nv,bpmlim=c(60,180),frameshift=0.01) {
   a <- stats::acf(nv,500,plot=FALSE)
-  p <- sort(detect.peaks2(a$acf,0.1,10,"max"))
+  st <- summary(a$acf)
+  p <- sort(detect.peaks2(a$acf,st[3],10,"max"))
   bpm <- 6000/p
   for (i in 1:length(p)) {
     if (bpmlim[1] <= bpm[i] & bpm[i] <= bpmlim[2]) {
@@ -194,16 +195,26 @@ finerPeriodAnalysis <- function(flux, period, range=5.0, prec=0.01) {
 #' \code{generateBeep} substitutes the right channel of the wave object with beep sounds at the beat positions
 #'
 #' @param org_aud an Wave object
-#' @param beatpos positions of beat
-#' @param partpos positions of part boundary
+#' @param beat beat tracking result obtained by beattrack()
 #' @param beeplength length of a beep in frames
 #' @param beepamp amplitude of a beep
 #' @return a wave object
 #' @export
-generateBeep <- function(org_aud,beatpos,partpos,beeplength=5,beepamp=5000) {
+generateBeep <- function(org_aud,beat,beeplength=5,beepamp=5000) {
+  beatpos <- beat$beatpos
+  partpos <- beat$boundary
   fwidth <- org_aud@samp.rate/100
+  nframe <- ceiling(length(org_aud)/fwidth)
+  if (partpos[length(partpos)] < nframe+1) {
+    partpos <- c(partpos,nframe+1)
+  }
   wav <- org_aud
   wav@right <- rep(0,length(wav))
+
+  maxframe <- as.integer(length(org_aud)/fwidth+0.999)
+  if (partpos[length(partpos)] < maxframe) {
+    partpos <- c(partpos,maxframe)
+  }
 
   freqs <- c(800,1000,1200,1600,2000,2500,3000,3500,4000)
   nf <- 1
