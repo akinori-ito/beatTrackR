@@ -4,10 +4,12 @@
 \alias{beattrack}
 \title{beat tracking}
 \usage{
-beattrack(w)
+beattrack(w, freq.range = NULL, fine.range = 5, fine.prec = 0.01)
 }
 \arguments{
 \item{w}{a Wave object}
+
+\item{freq.range}{Frequrncy range on which spectral flux is calculated. (NULL means using the entire range) For example, freq.range=c(0,8000) means "use 0 to 8000Hz for calculation"}
 }
 \value{
 a list. beatpos is a vector of beat positions, boundary is a vector of part boundaries, flux is the spectral flux, localperiod is a vector of local fundamental period, frames is the total frame length

@@ -4,12 +4,14 @@
 \alias{spectralFlux}
 \title{Calculate spectral flux}
 \usage{
-spectralFlux(w, frameshift = 0.01)
+spectralFlux(w, frameshift = 0.01, freq.range = NULL)
 }
 \arguments{
 \item{w}{an Wave object}
 
 \item{frameshift}{The frame shift in second (default 0.01)}
+
+\item{freq.range}{Frequrncy range on which spectral flux is calculated. (NULL means using the entire range) For example, freq.range=c(0,8000) means "use 0 to 8000Hz for calculation"}
 }
 \value{
 a vector of spectral flux
