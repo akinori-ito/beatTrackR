@@ -255,6 +255,8 @@ beattrack <- function(w,freq.range=NULL,fine.range=5.0,fine.prec=0.01) {
 
   # phase 3: segment the signal
   feature <- tuneR::melfcc(w)
+  #feature <- tuneR::audspec(tuneR::powspec(w@left,sr=w@samp.rate,wintime=0.02,steptime=0.01,dither=TRUE))
+  #feature <- t(feature$aspectrum)
   segs <- h_analysis(feature, peaks, 500)
   seg.begin <- c(1,peaks[segs$segs])
   seg.end <- c(peaks[segs$segs]-1,nrow(feature))
@@ -276,16 +278,19 @@ beattrack <- function(w,freq.range=NULL,fine.range=5.0,fine.prec=0.01) {
   # phase 4: calculate local BPM
   localperiod <- rep(0,length(seg.begin))
   localscore <- rep(0,length(seg.begin))
+  localpower <- matrix(0,length(seg.begin),ncol(feature))
   cat("Global period = ",globalBPM$period," samples\n")
   newpos <- c()
   for (i in 1:length(seg.begin)) {
     p_res <- finerPeriodAnalysis(flux[seg.begin[i]:seg.end[i]],globalBPM$period,range=fine.range,prec=fine.prec)
     localperiod[i] <- p_res$period
     localscore[i] <- p_res$meanval
+    localpower[i,] <- colMeans(feature[seg.begin[i]:seg.end[i],])
     cat("Period of segment ",i," = ",p_res$period,"\n")
     newpos <- c(newpos,p_res$pos+seg.begin[i]-1)
   }
   list(beatpos=newpos,boundary=seg.begin,flux=flux,
        localperiod=localperiod,localscore=localscore,
+       localpower=localpower,
        frames=length(flux))
 }
