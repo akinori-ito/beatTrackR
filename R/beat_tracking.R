@@ -254,7 +254,7 @@ beattrack <- function(w,freq.range=NULL,fine.range=5.0,fine.prec=0.01) {
   cat("Global BPM=", globalBPM$bpm, "\n")
 
   # phase 3: segment the signal
-  feature <- tuneR::melfcc(w)
+  feature <- tuneR::melfcc(w,dither=TRUE)
   #feature <- tuneR::audspec(tuneR::powspec(w@left,sr=w@samp.rate,wintime=0.02,steptime=0.01,dither=TRUE))
   #feature <- t(feature$aspectrum)
   segs <- h_analysis(feature, peaks, 500)
