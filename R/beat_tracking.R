@@ -92,22 +92,24 @@ spectralFlux <- function(w,frameshift=0.01,freq.range=NULL) {
 #' \code{extimatePeriod} estimates the fundamental period and BPM from the input vector.
 #' @param nv input signal (spectral flux is assumed)
 #' @param bpmlim two-element vector, lower and upper bound of BPM
-#' @param frameshift The frame period in second (default 0.01)
 #' @return list of the BPM and fundamental period.
 #' @export
-estimatePeriod <- function(nv,bpmlim=c(60,180),frameshift=0.01) {
+estimatePeriod <- function(nv,bpmlim=c(60,200)) {
   a <- stats::acf(nv,500,plot=FALSE)
   st <- summary(a$acf)
   p <- sort(detect.peaks2(a$acf,st[3],10,"max"))
   bpm <- 6000/p
+  bpmcand <- c()
+  bpmval <- c()
   for (i in 1:length(p)) {
     if (bpmlim[1] <= bpm[i] & bpm[i] <= bpmlim[2]) {
-      optbpm=bpm[i]
-      break
+      bpmcand <- c(bpmcand,p[i])
+      bpmval <- c(bpmval,a$acf[p[i]])
     }
   }
-  period <- p[i]
-  list(bpm=optbpm, period=period)
+  i <- which.max(bpmval)
+  period <- bpmcand[i]
+  list(bpm=6000/period, period=period)
 }
 
 #' Calculate the boundary score using Hearst method
