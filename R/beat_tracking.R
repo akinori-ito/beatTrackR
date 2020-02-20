@@ -138,9 +138,10 @@ hearst <- function(feature,p,width) {
 #' @param peaks vector of boundary candidates
 #' @param hwidth window width (in frame)
 #' @param firstskip number of frames to skip the first part to be segmented
+#' @param threshold threshold of segmentation (high threshold leads less segments)
 #' @return a list of two elements: segs is a vector of boundaries, vals is a vector of boundary score
 #' @export
-h_analysis <- function(feature, peaks, hwidth=500, firstskip=500) {
+h_analysis <- function(feature, peaks, hwidth=500, firstskip=500,thr=0.674) {
   vals <- rep(0,length(peaks))
   for (k in 2:(length(peaks)-1)) {
     if (peaks[k] < firstskip) { #skip the first 5 sec
@@ -154,8 +155,11 @@ h_analysis <- function(feature, peaks, hwidth=500, firstskip=500) {
       vals[k] <- v
     }
   }
-  mval <- summary(vals)
-  thres <- mval[1]
+  vmean <- mean(vals)
+  vsd <- sd(vals)
+  #mval <- summary(vals)
+  #thres <- mval[1]
+  thres <- vmean-vsd*thr
   list(segs=detect.peaks2(vals,thres,10,"max"),vals=vals)
 }
 
@@ -248,12 +252,14 @@ optimizeBeat <- function(flux,seg.begin,seg.end,period,lambda=1,range=10,prec=0.
   }
   newpos <- c()
   localperiod <- rep(0,nseg)
+  localscore <- rep(0,nseg)
   for (i in 1:nseg) {
     localperiod[i] <- fperiods[i,bestoffset[i]]
+    localscore[i] <- scores[i,bestoffset[i]]
     pos <- floor(seq(seg.begin[i]+bestoffset[i],seg.end[i],localperiod[i]))
     newpos <- c(newpos,pos)
   }
-  list(newpos=newpos,localperiod=localperiod)
+  list(newpos=newpos,localperiod=localperiod,localscore=localscore)
 }
 
 #' Superimpose beep sound at the beat position
@@ -308,7 +314,7 @@ generateBeep <- function(org_aud,beat,beeplength=5,beepamp=5000) {
 #' @param freq.range Frequrncy range on which spectral flux is calculated. (NULL means using the entire range) For example, freq.range=c(0,8000) means "use 0 to 8000Hz for calculation"
 #' @return a list. beatpos is a vector of beat positions, boundary is a vector of part boundaries, flux is the spectral flux, localperiod is a vector of local fundamental period, frames is the total frame length
 #' @export
-beattrack <- function(w,freq.range=NULL,fine.range=10.0,fine.prec=0.1,lambda=0.1) {
+beattrack <- function(w,freq.range=NULL,fine.range=10.0,fine.prec=0.1,lambda=0.1, segthr=0.674) {
 
   # phase 1: calcualte spectral flux
   flux <- spectralFlux(w,freq.range=freq.range)
@@ -322,7 +328,7 @@ beattrack <- function(w,freq.range=NULL,fine.range=10.0,fine.prec=0.1,lambda=0.1
   feature <- tuneR::melfcc(w,dither=TRUE)
   #feature <- tuneR::audspec(tuneR::powspec(w@left,sr=w@samp.rate,wintime=0.02,steptime=0.01,dither=TRUE))
   #feature <- t(feature$aspectrum)
-  segs <- h_analysis(feature, peaks, 500)
+  segs <- h_analysis(feature, peaks, 500, thr=segthr)
   seg.begin <- c(1,peaks[segs$segs])
   seg.end <- c(peaks[segs$segs]-1,nrow(feature))
   # merge short segments: one segment should be no less than 1 sec
@@ -343,7 +349,14 @@ beattrack <- function(w,freq.range=NULL,fine.range=10.0,fine.prec=0.1,lambda=0.1
   # phase 4: calculate local BPM
   res <- optimizeBeat(flux,seg.begin,seg.end,
                       globalBPM$period,lambda,fine.range,fine.prec)
+  localpower <- matrix(0,length(seg.begin),ncol(feature))
+  for (i in 1:length(seg.begin)) {
+    localpower[i,] <- colMeans(feature[seg.begin[i]:seg.end[i],])
+    cat("Period of segment ",i," = ",res$localperiod[i],"\n")
+  }
   list(beatpos=res$newpos,boundary=seg.begin,flux=flux,
        localperiod=res$localperiod,
+       localscore=res$localscore,
+       localpower=localpower,
        frames=length(flux))
 }
