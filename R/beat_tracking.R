@@ -71,12 +71,12 @@ spectralFlux <- function(w,frameshift=0.01,freq.range=NULL) {
   lowbin <- as.integer(freq.range[1]/nyquist.freq*(nrow(spec)-1))+1
   highbin <- as.integer(freq.range[2]/nyquist.freq*(nrow(spec)-1))+1
   #cat("frequency bin = ",lowbin,", ",highbin,"\n")
-  #dspec <- abs(tuneR::deltas(log(spec),3))
-  nc <- ncol(spec)
-  spec <- log(spec)
-  pr_spec <- cbind(spec[,1],spec[,1:(ncol(spec)-1)])
-  nx_spec <- cbind(spec[,2:ncol(spec)],spec[,ncol(spec)])
-  dspec <- abs(nx_spec-pr_spec)
+  dspec <- abs(tuneR::deltas(log(spec),w=3))
+  #nc <- ncol(spec)
+  #spec <- log(spec)
+  #pr_spec <- cbind(spec[,1],spec[,1:(ncol(spec)-1)])
+  #nx_spec <- cbind(spec[,2:ncol(spec)],spec[,ncol(spec)])
+  #dspec <- abs(nx_spec-pr_spec)
   nv <- rep(0,ncol(dspec))
   for (i in 1:ncol(dspec)) {
     nv[i] <- sum(dspec[lowbin:highbin,i])
@@ -322,7 +322,7 @@ beattrack <- function(w,freq.range=NULL,fine.range=10.0,fine.prec=0.1,lambda=0.1
   # phase 2: detect peaks
   globalBPM <- estimatePeriod(flux)
   peaks <- detect.peaks2(flux,0.1,globalBPM$period/4,"max")
-  cat("Global BPM=", globalBPM$bpm, "\n")
+  cat("Global BPM=", globalBPM$bpm, " period= ",globalBPM$period,"\n")
 
   # phase 3: segment the signal
   feature <- tuneR::melfcc(w,dither=TRUE)
