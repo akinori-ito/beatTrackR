@@ -271,9 +271,16 @@ optimizeBeat <- function(flux,seg.begin,seg.end,period,lambda=1,range=10,prec=0.
 #' @param beepamp amplitude of a beep
 #' @return a wave object
 #' @export
-generateBeep <- function(org_aud,beat,beeplength=5,beepamp=5000) {
-  beatpos <- beat$beatpos
-  partpos <- beat$boundary
+generateBeep <- function(org_aud,beat=NULL,beatpos=NULL,beatunit="sec",beeplength=5,beepamp=5000) {
+  if (!is.null(beat)) {
+    beatpos <- beat$beatpos
+    partpos <- beat$boundary
+  } else if (!is.null(beatpos)) {
+    if (beatunit == "sec") {
+      beatpos <- as.integer(beatpos*100)
+    }
+    partpos <- c(0)
+  }
   fwidth <- org_aud@samp.rate/100
   nframe <- ceiling(length(org_aud)/fwidth)
   if (partpos[length(partpos)] < nframe+1) {
