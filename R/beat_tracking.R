@@ -54,37 +54,98 @@ detect.peaks2 <- function(values,thres,pwidth,type="min") {
   x$pos
 }
 
+deltaSpectrum <- function(spec) {
+  nr <- nrow(spec)
+  nc <- ncol(spec)
+  res <- matrix(0,nrow=nr,ncol=nc)
+  res[,1] <- spec[,2]
+  res[,2:(nc-1)] <- spec[,3:nc]-spec[,1:(nc-2)]
+  res[,nc] <- -spec[,nc-1]
+  res
+}
+
 #' Calculate spectral flux
 #'
 #' \code{spectfalFlux} calculates the spectral flux from the wave object.
-#' @param w an Wave object
+#' @param w an Wave object or a matrix (spectrogram)
 #' @param frameshift The frame shift in second (default 0.01)
 #' @param freq.range Frequrncy range on which spectral flux is calculated. (NULL means using the entire range) For example, freq.range=c(0,8000) means "use 0 to 8000Hz for calculation"
 #' @return a vector of spectral flux
 #' @export
-spectralFlux <- function(w,frameshift=0.01,freq.range=NULL) {
-  spec <- tuneR::powspec(w@left, w@samp.rate, wintime=frameshift*2,steptime=frameshift,dither=TRUE)
-  nyquist.freq <- w@samp.rate/2
+spectralFlux <- function(w,samp.rate=44100,frameshift=0.01,wintime=0.025,freq.range=NULL) {
+  if (class(w) == "Wave") {
+    spec <- tuneR::powspec(w@left, w@samp.rate, wintime=wintime,steptime=frameshift,dither=TRUE)
+    nyquist.freq <- w@samp.rate/2
+  } else {
+    spec <- w
+    nyquist.freq <- samp.rate/2
+  }
   if (is.null(freq.range)) {
     freq.range <- c(0,nyquist.freq)
   }
   lowbin <- as.integer(freq.range[1]/nyquist.freq*(nrow(spec)-1))+1
   highbin <- as.integer(freq.range[2]/nyquist.freq*(nrow(spec)-1))+1
-  #cat("frequency bin = ",lowbin,", ",highbin,"\n")
-  dspec <- abs(tuneR::deltas(log(spec),w=3))
-  #nc <- ncol(spec)
-  #spec <- log(spec)
-  #pr_spec <- cbind(spec[,1],spec[,1:(ncol(spec)-1)])
-  #nx_spec <- cbind(spec[,2:ncol(spec)],spec[,ncol(spec)])
-  #dspec <- abs(nx_spec-pr_spec)
+  #dspec <- abs(tuneR::deltas(log(spec),w=3))
+  dspec <- deltaSpectrum(log(spec))
   nv <- rep(0,ncol(dspec))
-  for (i in 1:ncol(dspec)) {
-    nv[i] <- sum(dspec[lowbin:highbin,i])
-  }
+  nv<-colSums(dspec[lowbin:highbin,])
   nv <- nv-stats::median(nv)
   nv <- sapply(nv,function(x){if (x<0) return(0); return(x)})
-  #plot(nv/max(nv),type="l")
+  # let first and last 0.1sec to be zero
+  zlen <- as.integer(0.1/frameshift)
+  nv[1:zlen] <- 0
+  nv[(length(nv)-zlen):length(nv)] <- 0
   nv/max(nv)
+  coef<-signal::fir1(12,c(1,4)/100,type="pass")
+  signal::filtfilt(coef,nv)
+}
+
+#
+# chroma vector
+#
+#' \code{chroma}: calculate chroma vector
+#' @param w a Wave object or a matrix (spectrogram)
+#' @param wintime the window width in sec (default 0.05)
+#' @param steptime the frame shift in sec (default 0.01)
+#' @param samp.rate the sampling rate
+#' @returm a matrix of spectral flux
+#' @export
+chroma <- function(w,wintime=0.05,steptime=0.01,samp.rate=44100) {
+  if (class(w) == "Wave") {
+    samp.rate <- w@samp.rate
+    spec <- t(powspec(w@left,sr=samp.rate,wintime=wintime,steptime=steptime,dither=TRUE))
+  } else {
+    spec <- t(w)
+  }
+  basefreq <- c(65.40639,69.29566,73.41619,77.78175,82.40689,87.30706,92.49861,97.99886,103.82617,110.00000,116.54094,123.47083)
+  basebin <- basefreq/samp.rate*2*ncol(spec)
+  ch <- matrix(0,nrow=nrow(spec),ncol=12)
+  for (k in 1:12) {
+    i <- 0
+    ind <- c()
+    while (TRUE) {
+      j <- as.integer(i*basebin[k])
+      if (j > ncol(spec)) {
+        break
+      }
+      ind <- c(ind,j)
+      i <- i+1
+    }
+    for (t in 1:nrow(spec)) {
+      ch[t,k] <- sum(spec[t,ind])
+    }
+  }
+  ch
+}
+
+twopowerseq <- function(lim) {
+  res <- c()
+  k <- 1
+  while (k < lim) {
+    res <- c(res,k)
+    k <- k*2
+  }
+  res
 }
 
 #' Estimate fundamental period and BPM
@@ -94,10 +155,11 @@ spectralFlux <- function(w,frameshift=0.01,freq.range=NULL) {
 #' @param bpmlim two-element vector, lower and upper bound of BPM
 #' @return list of the BPM and fundamental period.
 #' @export
-estimatePeriod <- function(nv,bpmlim=c(60,200)) {
-  a <- stats::acf(nv,500,plot=FALSE,type="partial")
+estimatePeriod <- function(nv,bpmlim=c(60,240)) {
+  a <- stats::acf(nv,500,plot=FALSE,type="correlation")
   st <- summary(a$acf)
   p <- sort(detect.peaks2(a$acf,st[3],10,"max"))
+  p <- p[twopowerseq(length(p))]
   bpm <- 6000/p
   bpmcand <- c()
   bpmval <- c()
@@ -141,7 +203,7 @@ hearst <- function(feature,p,width) {
 #' @param threshold threshold of segmentation (high threshold leads less segments)
 #' @return a list of two elements: segs is a vector of boundaries, vals is a vector of boundary score
 #' @export
-h_analysis <- function(feature, peaks, hwidth=500, firstskip=500,thr=0.674) {
+h_analysis <- function(feature, peaks, hwidth=500, firstskip=300,thr=0.674) {
   vals <- rep(0,length(peaks))
   for (k in 2:(length(peaks)-1)) {
     if (peaks[k] < firstskip) { #skip the first 5 sec
@@ -160,7 +222,9 @@ h_analysis <- function(feature, peaks, hwidth=500, firstskip=500,thr=0.674) {
   #mval <- summary(vals)
   #thres <- mval[1]
   thres <- vmean-vsd*thr
-  list(segs=detect.peaks2(vals,thres,10,"max"),vals=vals)
+  #filtcoef <- fir1(6,0.1)
+  #vals <- signal::filtfilt(filtcoef,vals)
+  list(segs=detect.peaks2(vals,thres,hwidth/2,"max"),vals=vals)
 }
 
 
@@ -173,28 +237,43 @@ h_analysis <- function(feature, peaks, hwidth=500, firstskip=500,thr=0.674) {
 #' @param prec precision of search
 #' @return a list of two elements: score is the score with respect to a starting position, fperiod is a vector of estimated periods
 #' @export
-finerPeriodAnalysis <- function(flux, period, range=5.0, prec=0.01) {
+finerPeriodAnalysis <- function(flux, period, range=5.0, prec=0.01, plot_graph=FALSE, standalone=FALSE) {
+  # for test
+  #period <- estimatePeriod(flux)$period
+  #
   accval <- rep(0,period)
   fperiod <- rep(0,period)
   nsample <- length(flux)
   dx <- seq(-range,range,prec)
-
+  scores <- matrix(0,nrow=period,ncol=length(dx))
   for (i in 1:length(accval)) {
     dv <- rep(0,length(dx))
     for (k in 1:length(dx)) {
       ind <- as.integer(seq(i,nsample,period+dx[k]))
       onbeat <- sum(flux[ind])
-      dv[k] <- onbeat/length(ind)
+      dv[k] <- onbeat/length(ind)^0.95 #experimental
+      scores[i,k] <- dv[k]
     }
     kk <- which.max(dv)
     accval[i] <- dv[kk]
     fperiod[i] <- period+dx[kk]
   }
-#  offset <- which.max(accval)
-#  meanval <- accval[offset]
-#  period <- fperiod[offset]
-#  pos <- as.integer(seq(offset,nsample,period))
-#  list(period=period, pos=pos, meanval=meanval)
+  if (plot_graph) {
+    plot(flux,type="l")
+    xx<-readline("Pause:")
+    imagep(1:length(accval),dx,scores,useRaster=T)
+    xx<-readline("Pause:")
+  }
+  if (standalone) {
+    offset <- which.max(accval)
+    meanval <- accval[offset]
+    period <- fperiod[offset]
+    pos <- as.integer(seq(offset,nsample,period))
+    if (pos[1] < 5) {
+      pos <- pos[2:length(pos)]
+    }
+    return(list(period=period, pos=pos, meanval=meanval))
+  }
   list(score=accval,period=fperiod)
 }
 
@@ -211,6 +290,7 @@ finerPeriodAnalysis <- function(flux, period, range=5.0, prec=0.01) {
 #' @return a vector of beat positions
 #' @export
 optimizeBeat <- function(flux,seg.begin,seg.end,period,lambda=1,range=10,prec=0.1) {
+  cat("range=",range,"\n")
   nseg <- length(seg.begin)
   scores <- matrix(0,nrow=nseg,ncol=period)
   total <- matrix(-Inf,nrow=nseg,ncol=period)
@@ -261,6 +341,7 @@ optimizeBeat <- function(flux,seg.begin,seg.end,period,lambda=1,range=10,prec=0.
   }
   list(newpos=newpos,localperiod=localperiod,localscore=localscore)
 }
+
 
 #' Superimpose beep sound at the beat position
 #' \code{generateBeep} substitutes the right channel of the wave object with beep sounds at the beat positions
@@ -321,21 +402,48 @@ generateBeep <- function(org_aud,beat=NULL,beatpos=NULL,beatunit="sec",beeplengt
 #' @param freq.range Frequrncy range on which spectral flux is calculated. (NULL means using the entire range) For example, freq.range=c(0,8000) means "use 0 to 8000Hz for calculation"
 #' @return a list. beatpos is a vector of beat positions, boundary is a vector of part boundaries, flux is the spectral flux, localperiod is a vector of local fundamental period, frames is the total frame length
 #' @export
-beattrack <- function(w,freq.range=NULL,fine.range=10.0,fine.prec=0.1,lambda=0.1, segthr=0.674) {
+beattrack <- function(w,freq.range=NULL,fine.range=15.0,fine.prec=0.1,lambda=0.1, segthr=0.674, bpm=NA) {
 
   # phase 1: calcualte spectral flux
-  flux <- spectralFlux(w,freq.range=freq.range)
+  cat("Calculating spectrogram\n")
+  spec <- tuneR::powspec(w@left, w@samp.rate, wintime=0.025, steptime=0.01,dither=TRUE)
+  cat("Calculating spectral flux\n")
+  flux1 <- spectralFlux(spec,freq.range=freq.range,samp.rate=w@samp.rate)
+  flux1 <- flux1/max(flux1)
+  cat("Calculating chroma\n")
+  feature2 <- chroma(spec,samp.rate=w@samp.rate)
+  flux2 <- apply(feature2,1,max)-rowMeans(feature2)
+  flux2 <- flux2/max(flux2)
+  coef<-fir1(12,c(1,4)/100,type="pass")
+  flux2 <- filtfilt(coef,flux2)
+  flux <- flux1*0.4+flux2*0.6
 
   # phase 2: detect peaks
-  globalBPM <- estimatePeriod(flux)
-  peaks <- detect.peaks2(flux,0.1,globalBPM$period/4,"max")
+  cat("Estimating global BPM\n")
+  if (is.na(bpm)) {
+    globalBPM <- estimatePeriod(flux)
+  } else {
+    globalBPM <- list(bpm=bpm,period=as.integer(6000/bpm+0.499))
+  }
+  st <- summary(flux)
+  peaks <- detect.peaks2(flux,st[2],globalBPM$period/4,"max")
   cat("Global BPM=", globalBPM$bpm, " period= ",globalBPM$period,"\n")
 
   # phase 3: segment the signal
-  feature <- tuneR::melfcc(w,dither=TRUE)
+  feature1 <- tuneR::melfcc(mono(w,"both"),dither=TRUE)
+  feature1 <- feature1/max(feature1)
+#  feature2 <- chroma(spec,samp.rate=w@samp.rate)
+  feature2 <- feature2/max(feature2)
+  ndif <- nrow(feature1)-nrow(feature2)
+  if (ndif > 0) {
+    feature2 <- rbind(matrix(rep(feature2[1,],ndif),byrow=TRUE,nrow=ndif),feature2)
+  } else if (ndif < 0) {
+    feature1 <- rbind(matrix(rep(feature1[1,],-ndif),byrow=TRUE,nrow=-ndif),feature1)
+  }
+  feature <- cbind(feature1,feature2)
   #feature <- tuneR::audspec(tuneR::powspec(w@left,sr=w@samp.rate,wintime=0.02,steptime=0.01,dither=TRUE))
   #feature <- t(feature$aspectrum)
-  segs <- h_analysis(feature, peaks, 500, thr=segthr)
+  segs <- h_analysis(feature, peaks, 50, thr=segthr)
   seg.begin <- c(1,peaks[segs$segs])
   seg.end <- c(peaks[segs$segs]-1,nrow(feature))
   # merge short segments: one segment should be no less than 1 sec
@@ -354,16 +462,55 @@ beattrack <- function(w,freq.range=NULL,fine.range=10.0,fine.prec=0.1,lambda=0.1
   cat(length(seg.begin), " segments found\n")
 
   # phase 4: calculate local BPM
-  res <- optimizeBeat(flux,seg.begin,seg.end,
-                      globalBPM$period,lambda,fine.range,fine.prec)
+  res <- list(localperiod=rep(0,length(seg.begin)),
+              localscore=rep(0,length(seg.begin)),
+              newpos=c())
+  for (i in 1:length(seg.begin)) {
+    searchrange <- fine.range
+    if ((seg.end[i]-seg.begin[i]+1)/globalBPM$period < 16) {
+      # if the segment is short, the estimation result will be unreliable. Thus,
+      # basically we trust the global period and shrink the search range
+      searchrange <- searchrange/4
+    }
+    while (TRUE) {
+      r <- finerPeriodAnalysis(flux[seg.begin[i]:seg.end[i]],globalBPM$period,
+                               range=searchrange,prec=fine.prec,standalone=TRUE,plot_graph=FALSE)
+      if (r$meanval < 0.2) {
+        # The score is too low; re-try by enlarging the search region
+        searchrange <- searchrange*2
+        if (globalBPM$period-searchrange < 5) {
+          # too large search range
+          break
+        }
+      } else {
+        break
+      }
+    }
+    res$localperiod[i] <- r$period
+    res$localscore[i] <- r$meanval
+    res$newpos <- c(res$newpos,r$pos+seg.begin[i]-1)
+    cat("Period of segment ",i," = ",res$localperiod[i])
+    cat("\t#beat=",(seg.end[i]-seg.begin[i]+1)/res$localperiod[i])
+    cat("\tscore=",res$localscore[i],"\n")
+  }
+  # res <- optimizeBeat(flux,seg.begin,seg.end,
+  #                     period=globalBPM$period,lambda=lambda,range=fine.range,prec=fine.prec)
   localpower <- matrix(0,length(seg.begin),ncol(feature))
   for (i in 1:length(seg.begin)) {
     localpower[i,] <- colMeans(feature[seg.begin[i]:seg.end[i],])
-    cat("Period of segment ",i," = ",res$localperiod[i],"\n")
   }
   list(beatpos=res$newpos,boundary=seg.begin,flux=flux,
        localperiod=res$localperiod,
        localscore=res$localscore,
        localpower=localpower,
        frames=length(flux))
+}
+
+# test
+beeptest <- function(w,range=10,bpm=NA) {
+  if (class(w) == "character") {
+    w <- readWave(w)
+  }
+  beat <- beattrack(w,freq.range=c(0,22000),lambda=0,fine.range=range,segthr=1,bpm=bpm)
+  generateBeep(w,beat)
 }
