@@ -108,7 +108,7 @@ spectralFlux <- function(w,samp.rate=44100,frameshift=0.01,wintime=0.025,freq.ra
 #' @param wintime the window width in sec (default 0.05)
 #' @param steptime the frame shift in sec (default 0.01)
 #' @param samp.rate the sampling rate
-#' @returm a matrix of spectral flux
+#' @returm A matrix of spectral flux
 #' @export
 chroma <- function(w,wintime=0.05,steptime=0.01,samp.rate=44100) {
   if (class(w) == "Wave") {
@@ -235,7 +235,7 @@ h_analysis <- function(feature, peaks, hwidth=500, firstskip=300,thr=0.674) {
 #' @param period an approximate fundamental period (integer)
 #' @param range search range of fundamental period relative to \code{period}
 #' @param prec precision of search
-#' @return a list of two elements: score is the score with respect to a starting position, fperiod is a vector of estimated periods
+#' @return A list of two elements: score is the score with respect to a starting position, fperiod is a vector of estimated periods
 #' @export
 finerPeriodAnalysis <- function(flux, period, range=5.0, prec=0.01, plot_graph=FALSE, standalone=FALSE) {
   # for test
@@ -348,6 +348,8 @@ optimizeBeat <- function(flux,seg.begin,seg.end,period,lambda=1,range=10,prec=0.
 #'
 #' @param org_aud an Wave object
 #' @param beat beat tracking result obtained by beattrack()
+#' @param beatpos beat position vector. Either beat or beatpos should be specified.
+#' @param beatunit when beatpos is specified, this parameter is used for speficying the unit of the beat. If beatunit="sec", the values of beatpos are interpreted as seconds; otherwise, frames.
 #' @param beeplength length of a beep in frames
 #' @param beepamp amplitude of a beep
 #' @return a wave object
