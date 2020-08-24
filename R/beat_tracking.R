@@ -404,7 +404,7 @@ generateBeep <- function(org_aud,beat=NULL,beatpos=NULL,beatunit="sec",beeplengt
 #' @param freq.range Frequrncy range on which spectral flux is calculated. (NULL means using the entire range) For example, freq.range=c(0,8000) means "use 0 to 8000Hz for calculation"
 #' @return a list. beatpos is a vector of beat positions, boundary is a vector of part boundaries, flux is the spectral flux, localperiod is a vector of local fundamental period, frames is the total frame length
 #' @export
-beattrack <- function(w,freq.range=NULL,fine.range=15.0,fine.prec=0.1,lambda=0.1, segthr=0.674, bpm=NA, chroma_ratio=0.6) {
+beattrack <- function(w,freq.range=NULL,fine.range=15.0,fine.prec=0.1,lambda=0.1, segthr=0.674, bpm=NA, chroma_ratio=1.5) {
 
   # phase 1: calcualte spectral flux
   cat("Calculating spectrogram\n")
