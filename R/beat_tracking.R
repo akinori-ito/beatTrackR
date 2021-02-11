@@ -58,10 +58,14 @@ deltaSpectrum <- function(spec) {
   nr <- nrow(spec)
   nc <- ncol(spec)
   res <- matrix(0,nrow=nr,ncol=nc)
-  res[,1] <- spec[,2]
+  res[,1] <- 0
   res[,2:(nc-1)] <- spec[,3:nc]-spec[,1:(nc-2)]
-  res[,nc] <- -spec[,nc-1]
+  res[,nc] <- -0
   res
+}
+
+relu <- function(x) {
+  (x+abs(x))/2
 }
 
 #' Calculate spectral flux
@@ -88,9 +92,16 @@ spectralFlux <- function(w,samp.rate=44100,frameshift=0.01,wintime=0.025,freq.ra
   #dspec <- abs(tuneR::deltas(log(spec),w=3))
   dspec <- deltaSpectrum(log(spec))
   nv <- rep(0,ncol(dspec))
-  nv<-colSums(dspec[lowbin:highbin,])
+  nv<-colSums(relu(dspec[lowbin:highbin,]))
   nv <- nv-stats::median(nv)
   nv <- sapply(nv,function(x){if (x<0) return(0); return(x)})
+
+  # imagep(t(log(spec)[,1:200]),useRaster=TRUE)
+  # xx<-readline("Pause:")
+  # imagep(t(relu(dspec[,1:200])),useRaster=TRUE,zlim=c(0,5))
+  # xx<-readline("Pause:")
+  # plot(nv[1:200],type="l")
+  # xx<-readline("Pause:")
   # let first and last 0.1sec to be zero
   zlen <- as.integer(0.1/frameshift)
   nv[1:zlen] <- 0
@@ -160,17 +171,31 @@ estimatePeriod <- function(nv,bpmlim=c(60,240)) {
   st <- summary(a$acf)
   p <- sort(detect.peaks2(a$acf,st[3],10,"max"))
   p <- p[twopowerseq(length(p))]
-  bpm <- 6000/p
+  bpm <- 6000/a$lag[p]
   bpmcand <- c()
   bpmval <- c()
+  #cat("BPMLIM=",bpmlim,"\n")
   for (i in 1:length(p)) {
+#    print(c(bpm[i],a$lag[p[i]],a$acf[p[i]]))
     if (bpmlim[1] <= bpm[i] & bpm[i] <= bpmlim[2]) {
       bpmcand <- c(bpmcand,p[i])
       bpmval <- c(bpmval,a$acf[p[i]])
     }
   }
+  print(bpmval)
+  print(bpmcand)
   i <- which.max(bpmval)
-  period <- bpmcand[i]
+  print(i)
+  period <- a$lag[bpmcand[i]]
+
+  # plot(a$lag,a$acf,type="l")
+  # lagrange <- 6000/bpmlim
+  # rect(lagrange[1],min(a$acf),lagrange[2],max(a$acf))
+  # points(a$lag[p],a$acf[p],col=2)
+  # points(a$lag[bpmcand[i]],a$acf[bpmcand[i]],col=3)
+  # xx <- readline("Pause:")
+  # 
+  
   list(bpm=6000/period, period=period)
 }
 
@@ -227,6 +252,15 @@ h_analysis <- function(feature, peaks, hwidth=500, firstskip=300,thr=0.674) {
   list(segs=detect.peaks2(vals,thres,hwidth/2,"max"),vals=vals)
 }
 
+periodfunc <- function(n,period,firstpos=1,sigma=1) {
+  x <- rep(0,n)
+  t <- firstpos
+  while (t < n) {
+    x <- x+dnorm(1:n,t,sigma)
+    t <- t+period
+  }
+  x/max(x)
+}
 
 #' Detailed period analysis
 #' \code{finderPeriodAnalysis} analyzes the input signal (spectral flux) in detail.
@@ -241,20 +275,31 @@ finerPeriodAnalysis <- function(flux, period, range=5.0, prec=0.01, plot_graph=F
   # for test
   #period <- estimatePeriod(flux)$period
   #
-  accval <- rep(0,period)
-  fperiod <- rep(0,period)
+  accval <- rep(0,period/2)
+  fperiod <- rep(0,period/2)
+  kmax <- rep(0,period/2)
   nsample <- length(flux)
   dx <- seq(-range,range,prec)
-  scores <- matrix(0,nrow=period,ncol=length(dx))
+  scores <- matrix(0,nrow=period/2,ncol=length(dx))
+  n_ind <- as.integer(nsample/period)+1
   for (i in 1:length(accval)) {
     dv <- rep(0,length(dx))
     for (k in 1:length(dx)) {
       ind <- as.integer(seq(i,nsample,period+dx[k]))
       onbeat <- sum(flux[ind])
-      dv[k] <- onbeat/length(ind)^0.95 #experimental
+#      onbeat <- sum(flux*periodfunc(nsample,period+dx[k],i,sigma=2))
+      nfactor <- n_ind
+      dif <- abs(n_ind-length(ind))
+      if (n_ind < length(ind)) {
+        nfactor <- nfactor+dif*2
+      } else if (n_ind > length(ind)) {
+        nfactor <- nfactor+dif
+      }
+      dv[k] <- onbeat/nfactor #experimental
       scores[i,k] <- dv[k]
     }
     kk <- which.max(dv)
+    kmax[i] <- kk
     accval[i] <- dv[kk]
     fperiod[i] <- period+dx[kk]
   }
@@ -262,6 +307,8 @@ finerPeriodAnalysis <- function(flux, period, range=5.0, prec=0.01, plot_graph=F
     plot(flux,type="l")
     xx<-readline("Pause:")
     imagep(1:length(accval),dx,scores,useRaster=T)
+    pp <- which.max(accval)
+    points(pp,dx[kmax[pp]],col=2)
     xx<-readline("Pause:")
   }
   if (standalone) {
@@ -475,8 +522,12 @@ beattrack <- function(w,freq.range=NULL,fine.range=15.0,fine.prec=0.1,lambda=0.1
       searchrange <- searchrange/4
     }
     while (TRUE) {
-      r <- finerPeriodAnalysis(flux[seg.begin[i]:seg.end[i]],globalBPM$period,
-                               range=searchrange,prec=fine.prec,standalone=TRUE,plot_graph=FALSE)
+      r <- finerPeriodAnalysis(flux[seg.begin[i]:seg.end[i]],
+                               globalBPM$period,
+                               range=searchrange,
+                               prec=fine.prec,
+                               standalone=TRUE,
+                               plot_graph=TRUE)
       if (r$meanval < 0.2) {
         # The score is too low; re-try by enlarging the search region
         searchrange <- searchrange*2
